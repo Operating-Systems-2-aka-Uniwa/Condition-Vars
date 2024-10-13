@@ -1,8 +1,8 @@
 /*
-Εργαστήριο ΛΣ 2 / Άσκηση 2 / Ερώτημα 2 / 2021-22
-Ονοματεπώνυμο: Αθανασίου Βασίλειος Ευάγγελος
-ΑΜ: 19390005
-Τρόπος μεταγλώττισης: gcc -o LS2-19390005-Δ4-Β-2-2-condition_vars LS2-19390005-Δ4-Β-2-2-condition_vars.c -pthread 
+Lab OS 2 / Exercise 2 / Question 2 / 2021-22
+Name: Athanasiou Vasileios Evangelos
+Student ID: 19390005
+Compilation Command: gcc -o condition_vars condition_vars.c -pthread 
 */
 
 #include <stdio.h>
@@ -10,213 +10,231 @@
 #include <pthread.h>
 #include <sys/types.h>
 
-/************************************************************************ Δήλωση των κοινών πόρων **********************************************************************************************/
-int cnt_signal = 1;                                                       // Δήλωση και αρχικοποίηση της καθολικής-κοινής μεταβλητής με την τιμή 1 (έναυσμα για εκτύπωση της συμβολοσειράς "What A "), για την τιμή αναγνωριστικού του κάθε από τα 3 "threads" που πρέπει να ελέγχει αν αντιστοιχεί στο δικό του, προτού εκτελέσει το κρίσιμο τμήμα του (έχοντας κλειδώσει, βέβαια, το "mutex"). Η τιμή 1 είναι το αναγνωριστικό για το 1ο "thread", η 2 για το 2ο και η 3 για το 3ο.
-int cnt_wait = 0;                                                         // Δήλωση και αρχικοποίηση της καθολικής-κοινής μεταβλητής με την τιμή 0, για το πλήθος των "threads" που βρίσκονται σε αναμονή, με την χρήση ενός "condition variable".
+/************************************************************************ Declaration of shared resources **********************************************************************************************/
+int cnt_signal = 1;                                                       // Declaration and initialization of the global-shared variable with the value 1 (trigger for printing the string "What A "), which indicates the thread ID that must check if it corresponds to its own before executing its critical section (having locked the "mutex", of course). The value 1 is the ID for the 1st thread, 2 for the 2nd, and 3 for the 3rd thread.
+int cnt_wait = 0;                                                         // Declaration and initialization of the global-shared variable with the value 0, which counts the number of threads waiting using a "condition variable".
 /***********************************************************************************************************************************************************************************************/
 
-/************************************************************************ Δήλωση και στατική αρχικοποίηση του "mutex"  *************************************************************************/
-pthread_mutex_t mut = PTHREAD_MUTEX_INITIALIZER;                          // Δήλωση και στατική αρχικοποίηση μιας μεταβλητής τύπου "pthread_mutex_t" με την σταθερά "PTHREAD_MUTEX_INITIALIZER", που εισάγονται από την βιβλιοθήκη των "POSIX Threads" (γραμμή 10), δηλαδή, το "mutex" (γραμμές 93-114, 137-158, 181-202 για το 1ο, 2ο και 3ο "thread" αντίστοιχα) που χρησιμοποιείται για την προστασία των κοινών πόρων "cnt_signal, cnt_wait" (γραμμές 14-15) στο κρίσιμο τμήμα των "threads" από ταυτόχρονη χρήση τους από δύο ή περισσότερα "threads".
+/************************************************************************ Declaration and static initialization of the "mutex"  *************************************************************************/
+pthread_mutex_t mut = PTHREAD_MUTEX_INITIALIZER;                          // Declaration and static initialization of a "pthread_mutex_t" variable with the constant "PTHREAD_MUTEX_INITIALIZER", which is imported from the "POSIX Threads" library (line 10), i.e., the "mutex" (lines 93-114, 137-158, 181-202 for the 1st, 2nd, and 3rd threads respectively) used to protect the shared resources "cnt_signal, cnt_wait" (lines 14-15) in the critical section of the threads from simultaneous access by two or more threads.
 /***********************************************************************************************************************************************************************************************/
 
-/************************************************************************ Δήλωση και στατική αρχικοποίηση του "condition variable" *************************************************************/
-pthread_cond_t cond_var = PTHREAD_COND_INITIALIZER;                       // Δήλωση και στατική αρχικοποίηση μιας μεταβλητής τύπου "pthread_cond_t" με την σταθερά "PTHREAD_COND_INITIALIZER", που εισάγονται από τις βιβλιοθήκες των "POSIX Threads" (γραμμή 10-11), δηλαδή, μία "condition variable" που επιτυγχάνει τον συγχρονισμό των "threads" βάζοντας ένα "thread" ή και περισσότερα σε αναμονή ελευθερώνοντας, παράλληλα και το "mutex" για χρήση από άλλο "thread" και βγάζοντας το "thread" ή τα "threads" από την αναμονή με μία ειδοποίηση. Ο συνδυασμός αναμονή-αφύπνιση μεταξύ των "threads" καθόριζεται από τα περιεχόμενα των καθολικών-κοινών μεταβλητών (γραμμές 13-14) που θα αναλυθούν στα αντίστοιχα κρίσιμα τμήματα των "threads (γραμμές 84-123, 128-167, 172-211, για το 1ο, 2ο και 3ο "thread" αντίστοιχα). 
+/************************************************************************ Declaration and static initialization of the "condition variable" *************************************************************/
+pthread_cond_t cond_var = PTHREAD_COND_INITIALIZER;                       // Declaration and static initialization of a "pthread_cond_t" variable with the constant "PTHREAD_COND_INITIALIZER", imported from the "POSIX Threads" library (lines 10-11), i.e., a "condition variable" that achieves synchronization between threads by putting one or more threads to wait while releasing the "mutex" for other threads to use. It can wake the waiting threads with a signal. The combination of waiting and waking between threads is determined by the content of the global-shared variables (lines 13-14) that will be explained in the corresponding critical sections of the threads (lines 84-123, 128-167, 172-211 for the 1st, 2nd, and 3rd threads respectively).
 /***********************************************************************************************************************************************************************************************/
 
-/************************************************************************ Δήλωση των κρίσιμων τμημάτων των τριών "threads" *********************************************************************/
-void *thread1 (void *);                                                   // Δήλωση της συνάρτησης "thread1" (κρίσιμο τμήμα), την οποία θα καλέσει το 1ο "thread" που θα δημιουργηθεί και υλοποιείται στις γραμμές 84-123.
-void *thread2 (void *);                                                   // Δήλωση της συνάρτησης "thread2" (κρίσιμο τμήμα), την οποία θα καλέσει το 2ο "thread" που θα δημιουργηθεί και υλοποιείται στις γραμμές 128-167.
-void *thread3 (void *);                                                   // Δήλωση της συνάρτησης "thread3" (κρίσιμο τμήμα), την οποία θα καλέσει το 3ο "thread" που θα δημιουργηθεί και υλοποιείται στις γραμμές 172-211.
+/************************************************************************ Declaration of critical sections of the three "threads" *********************************************************************/
+void *thread1 (void *);                                                   // Declaration of the "thread1" function (critical section), which will be called by the 1st thread that will be created, and it is implemented in lines 84-123.
+void *thread2 (void *);                                                   // Declaration of the "thread2" function (critical section), which will be called by the 2nd thread that will be created, and it is implemented in lines 128-167.
+void *thread3 (void *);                                                   // Declaration of the "thread3" function (critical section), which will be called by the 3rd thread that will be created, and it is implemented in lines 172-211.
 /***********************************************************************************************************************************************************************************************/
 
 int main (int argc, char *argv[])
 {
-    pthread_t pthread1, pthread2, pthread3;                                // Δήλωση τριών μεταβλητών τύπου δομής "pthread_t" (εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11)), δηλαδή, τα τρία "threads" που θα δημιουργηθούν (γραμμές 36, 41, 46).
+    pthread_t pthread1, pthread2, pthread3;                                // Declaration of three variables of type "pthread_t" (imported from the "POSIX Threads" library (lines 10-11)), i.e., the three threads that will be created (lines 36, 41, 46).
         
-    if (pthread_create (&pthread1, NULL, &thread1, NULL) < 0)              /* Κλήση της συνάρτησης "pthread_create ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για την δημιουργία του 1ου "thread" (pthread1), όπου θα καλεί την συνάρτηση "thread1" (κρίσιμο τμήμα, γραμμές 84-123) χωρίς παραμέτρους και έλεγχος για επιστροφή τιμής σφάλματος. */
+    if (pthread_create (&pthread1, NULL, &thread1, NULL) < 0)              /* Call to the "pthread_create ()" function imported from the "POSIX Threads" library (lines 10-11), for creating the 1st thread (pthread1), which will call the "thread1" function (critical section, lines 84-123) without parameters, and checking for an error return value. */
     {
-        perror ("pthread_create () failed to execute");                    // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_create ()".
-        exit (1);                                                          // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+        perror ("pthread_create () failed to execute");                    // Prints an error message to "stderr" for the failure of "pthread_create ()".
+        exit (1);                                                          // The process terminates with "exit value" 1.
     }
-    if (pthread_create (&pthread2, NULL, &thread2, NULL) < 0)              /* Κλήση της συνάρτησης "pthread_create ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για την δημιουργία του 2ου "thread" (pthread2), όπου θα καλεί την συνάρτηση "thread2" (κρίσιμο τμήμα, γραμμές 128-167) χωρίς παραμέτρους και έλεγχος για επιστροφή τιμής σφάλματος. */
+    if (pthread_create (&pthread2, NULL, &thread2, NULL) < 0)              /* Call to the "pthread_create ()" function imported from the "POSIX Threads" library (lines 10-11), for creating the 2nd thread (pthread2), which will call the "thread2" function (critical section, lines 128-167) without parameters, and checking for an error return value. */
     {
-        perror ("pthread_create () failed to execute");                    // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_create ()".
-        exit (1);                                                          // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+        perror ("pthread_create () failed to execute");                    // Prints an error message to "stderr" for the failure of "pthread_create ()".
+        exit (1);                                                          // The process terminates with "exit value" 1.
     }
-    if (pthread_create (&pthread3, NULL, &thread3, NULL) < 0)              /* Κλήση της συνάρτησης "pthread_create ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για την δημιουργία του 3ου "thread" (pthread3), όπου θα καλεί την συνάρτηση "thread3" (κρίσιμο τμήμα, γραμμές 172-211) χωρίς παραμέτρους και έλεγχος για επιστροφή τιμής σφάλματος. */
+    if (pthread_create (&pthread3, NULL, &thread3, NULL) < 0)              /* Call to the "pthread_create ()" function imported from the "POSIX Threads" library (lines 10-11), for creating the 3rd thread (pthread3), which will call the "thread3" function (critical section, lines 172-211) without parameters, and checking for an error return value. */
     {
-        perror ("pthread_create () failed to execute");                    // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_create ()".
-        exit (1);                                                          // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+        perror ("pthread_create () failed to execute");                    // Prints an error message to "stderr" for the failure of "pthread_create ()".
+        exit (1);                                                          // The process terminates with "exit value" 1.
     }
 
-    if (pthread_join (pthread1, NULL) < 0)                                 /* Κλήση της συνάρτησης "pthread_join ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για τον συγχρονισμό του 1ου "thread" (pthread1), ώστε να αποδεσμευτεί από τη μνήμη και έλεγχος για επιστροφή τιμής σφάλματος. */
+    if (pthread_join (pthread1, NULL) < 0)                                 /* Call to the "pthread_join ()" function imported from the "POSIX Threads" library (lines 10-11), for synchronizing the 1st thread (pthread1) to release memory, and checking for an error return value. */
     {
-        perror ("pthread_join () failed to execute");                      // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_join ()".
-        exit (1);                                                          // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+        perror ("pthread_join () failed to execute");                      // Prints an error message to "stderr" for the failure of "pthread_join ()".
+        exit (1);                                                          // The process terminates with "exit value" 1.
     }
-    if (pthread_join (pthread2, NULL) < 0)                                 /* Κλήση της συνάρτησης "pthread_join ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για τον συγχρονισμό του 2ου "thread" (pthread2), ώστε να αποδεσμευτεί από τη μνήμη και έλεγχος για επιστροφή τιμής σφάλματος. */
+    if (pthread_join (pthread2, NULL) < 0)                                 /* Call to the "pthread_join ()" function imported from the "POSIX Threads" library (lines 10-11), for synchronizing the 2nd thread (pthread2) to release memory, and checking for an error return value. */
     {
-        perror ("pthread_join () failed to execute");                      // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_join ()".
-        exit (1);                                                          // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+        perror ("pthread_join () failed to execute");                      // Prints an error message to "stderr" for the failure of "pthread_join ()".
+        exit (1);                                                          // The process terminates with "exit value" 1.
     }
-    if (pthread_join (pthread3, NULL) < 0)                                 /* Κλήση της συνάρτησης "pthread_join ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για τον συγχρονισμό του 3ου "thread" (pthread3), ώστε να αποδεσμευτεί από τη μνήμη και έλεγχος για επιστροφή τιμής σφάλματος. */
+    if (pthread_join (pthread3, NULL) < 0)                                 /* Call to the "pthread_join ()" function imported from the "POSIX Threads" library (lines 10-11), for synchronizing the 3rd thread (pthread3) to release memory, and checking for an error return value. */
     {
-        perror ("pthread_join () failed to execute");                      // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_join ()".
-        exit (1);                                                          // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+        perror ("pthread_join () failed to execute");                      // Prints an error message to "stderr" for the failure of "pthread_join ()".
+        exit (1);                                                          // The process terminates with "exit value" 1.
     }
     
-    if (pthread_mutex_destroy (&mut) < 0)                                  /* Κλήση της συνάρτησης "pthread_mutex_destroy ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για την καταστροφή του "mutex", ώστε να αποδεσμευτεί από τη μνήμη και (γραμμές 93-114, 137-158, 181-202 για το 1ο, 2ο και 3ο "thread" αντίστοιχα) και που δημιουργήθηκε στη γραμμή 19 για την προστασία των κοινών πόρων από ταυτόχρονη χρήση τους από δύο ή περισσότερα "threads" και έλεγχος για επιστροφή τιμής σφάλματος. */
+    if (pthread_mutex_destroy (&mut) < 0)                                  /* Call to the "pthread_mutex_destroy ()" function imported from the "POSIX Threads" library (lines 10-11), for destroying the "mutex" to release memory (lines 93-114, 137-158, 181-202 for the 1st, 2nd, and 3rd threads respectively), which was created in line 19 to protect the shared resources from simultaneous use by two or more threads, and checking for an error return value. */
     {
-        perror ("pthread_mutex_destroy () failed to execute");             // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_mutex_destroy ()".
-        exit (1);                                                          // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+        perror ("pthread_mutex_destroy () failed to execute");             // Prints an error message to "stderr" for the failure of "pthread_mutex_destroy ()".
+        exit (1);                                                          // The process terminates with "exit value" 1.
     }
-    if (pthread_cond_destroy (&cond_var) < 0)                              /* Κλήση της συνάρτησης "pthread_cond_destroy ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για την καταστροφή του "condition variable", ώστε να αποδεσμευτεί από τη μνήμη και που δημιουργήθηκε στη γραμμή 23 για τον συγχρονισμό των "threads". */
+    if (pthread_cond_destroy (&cond_var) < 0)                              /* Call to the "pthread_cond_destroy ()" function imported from the "POSIX Threads" library (lines 10-11), for destroying the "condition variable" to release memory, which was created in line 23 to synchronize the threads. */
     {
-        perror ("pthread_cond_destroy () failed to execute");               // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_cond_destroy ()".
-        exit (1);                                                           // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+        perror ("pthread_cond_destroy () failed to execute");               // Prints an error message to "stderr" for the failure of "pthread_cond_destroy ()".
+        exit (1);                                                           // The process terminates with "exit value" 1.
     }
 
     return 0;
 }
 
-/************************************************************************** Κρίσιμο τμήμα του "pthread1" ****************************************************************************************/
+/************************************************************************** Critical section of "pthread1" ****************************************************************************************/
 void *thread1 (void *parameter)
 {
-    while (1)                                                               /* Ατέρμων βρόχος */
+    while (1)                                                               /* Infinite loop */
     {
-        if (pthread_mutex_lock (&mut) < 0)                                  /* Κλήση της συνάρτησης "pthread_mutex_lock ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για το κλείδωμα του "mutex" (γραμμές 93-114) που δημιουργήθηκε για την προστασία των κοινών πόρων στο κρίσιμο τμήμα του "pthread1" από ταυτόχρονη χρήση τους από δύο ή περισσότερα "threads" και έλεγχος για επιστροφή τιμής σφάλματος. */
+        if (pthread_mutex_lock (&mut) < 0)                                  /* Call to the "pthread_mutex_lock ()" function from the "POSIX Threads" library (lines 10-11), to lock the "mutex" (lines 93-114) which was created to protect shared resources in the critical section of "pthread1" from simultaneous access by two or more threads, and check for an error return value. */
         {
-            perror ("pthread_mutex_lock () failed to execute");             // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_mutex_lock ()".
-            exit (1);                                                       // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+            perror ("pthread_mutex_lock () failed to execute");             // Prints an error message to "stderr" for the failure of "pthread_mutex_lock ()".
+            exit (1);                                                       // The process terminates with "exit value" 1.
         }
 /************************************************************************** Mutex ****************************************************************************************************************/        
-        while (cnt_signal != 1)                                             /* Βρόχος για έλεγχο και συγκεκριμένα το αν η "cnt_signal" περιέχει την τιμή αναγνωριστικού που αντιστοιχεί στο 1ο "thread" (1), προκειμένου το "pthread1" να συνεχίσει την εκτέλεση του κρίσιμου τμήματος του (cnt_signal == 1) ή όχι (cnt_signal != 1). */
+        while (cnt_signal != 1)                                             /* Loop to check whether "cnt_signal" contains the ID value corresponding to the 1st thread (1), allowing "pthread1" to continue executing its critical section (cnt_signal == 1), or not (cnt_signal != 1). */
         {
-            cnt_wait++;                                                     // Αύξηση της καθολικής-κοινής μεταβλητής "cnt_wait" κατά 1, δηλώνοντας ότι θα υπάρχει τουλάχιστον ένα "thread" που θα βρίσκεται σε αναμονή από χρήση ενός "condition variable".
-            if (pthread_cond_wait (&cond_var, &mut) < 0)                    /* Κλήση της συνάρτησης "pthread_cond_wait ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), βάζοντας σε αναμονή το "pthread1" και ελευθερώνοντας παράλληλα το "mutex" για χρήση από κάποιο άλλο "thread". Ο βρόχος θα επαναλαμβάνεται για όσο η "cnt_signal" δεν περιέχει την τιμή αναγνωριστικού που αντιστοιχεί στο 1ο "thread" (1). Συνεπώς, το "thread" θα εγκλωβιστεί στον βρόχο με συνεχόμενες αναμονές και απώλειες ελέγχου του "mutex", μέχρι η "cnt_signal" "δώσει το σήμα" (αλλαγής της τιμής του από το κρίσιμο τμήμα του "pthread3" (γραμμές 172-211)) για "απεγκλωβισμό" του "thread" από τον βρόχο, δηλαδή, περιέχοντας την τιμή αναγνωριστικού που αντιστοιχεί στο 1ο "thread" (1). Επίσης, γίνεται και ο έλεγχος για επιστροφή τιμής σφάλματος από την "pthread_cond_wait ()". */
+            cnt_wait++;                                                     // Increment the global-shared variable "cnt_wait" by 1, indicating that at least one thread is waiting, using a "condition variable".
+            if (pthread_cond_wait (&cond_var, &mut) < 0)                    /* Call to the "pthread_cond_wait ()" function from the "POSIX Threads" library (lines 10-11), putting "pthread1" in wait and simultaneously releasing the "mutex" for use by another thread. The loop will continue while "cnt_signal" does not contain the ID value corresponding to the 1st thread (1). Thus, the thread will be trapped in the loop with continuous waits and loss of control over the "mutex" until "cnt_signal" "gives the signal" (change of its value from the critical section of "pthread3" (lines 172-211)) to "release" the thread from the loop, i.e., containing the ID value corresponding to the 1st thread (1). The return value of "pthread_cond_wait ()" is also checked for errors. */
             {
-                perror ("pthread_cond_wait () failed to execute");          // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_cond_wait ()".
-                exit (1);                                                   // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+                perror ("pthread_cond_wait () failed to execute");          // Prints an error message to "stderr" for the failure of "pthread_cond_wait ()".
+                exit (1);                                                   // The process terminates with "exit value" 1.
             }
         }
-        printf ("What A ");                                                 // Τυπώνεται στο κανάλι "stdout" το μήνυμα "What A".
-        if (cnt_wait > 0)                                                   /* Έλεγχος για το αν βρίσκεται ήδη σε αναμονή ένα ή περισσότερα "threads" */
+        printf ("What A ");                                                 // Prints "What A" to "stdout".
+        if (cnt_wait > 0)                                                   /* Check if one or more threads are already waiting */
         {
-            cnt_signal = 2;                                                 // Αλλαγή της τιμής αναγνωριστικού με την αντίστοιχη του 2ου "thread" (2) (έναυσμα για επόμενη εκτύπωση αυτή της συμβολοσειράς "Wonderful ").
-            if (pthread_cond_broadcast (&cond_var) < 0)                     /* Κλήση της συνάρτησης "pthread_cond_broadcast ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), και αφύπνιση όλων των "threads" που περιμένουν ειδοποίηση, όπου η βεβαιότητα ότι υπάρχουν "threads" σε αναμονή καθορίζεται από τον έλεγχο της γραμμής 103. Επίσης, γίνεται και ο έλεγχος για επιστροφή τιμής σφάλματος από την "pthread_cond_broadcast ()". */
+            cnt_signal = 2;                                                 // Change the ID value to the one corresponding to the 2nd thread (2) (trigger for the next output, the string "Wonderful ").
+            if (pthread_cond_broadcast (&cond_var) < 0)                     /* Call to the "pthread_cond_broadcast ()" function from the "POSIX Threads" library (lines 10-11), waking all threads waiting for a signal, ensured by the check in line 103. The return value of "pthread_cond_broadcast ()" is also checked for errors. */
             {
-                perror ("pthread_cond_broadcast () failed to execute");     // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_cond_broadcast ()".
-                exit (1);                                                   // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+                perror ("pthread_cond_broadcast () failed to execute");     // Prints an error message to "stderr" for the failure of "pthread_cond_broadcast ()".
+                exit (1);                                                   // The process terminates with "exit value" 1.
             }
-            cnt_wait = 0;                                                   // Μηδενισμός του πλήθους των "threads" που βρίσκονται σε αναμονή, διότι προηγήθηκε η κλήση της "pthread_cond_broadcast ()" στη γραμμή 106.
+            cnt_wait = 0;                                                   // Reset the count of threads in wait, since the call to "pthread_cond_broadcast ()" in line 106 has already occurred.
         } 
-        else                                                                /* Δεν υπάρχουν "threads" που βρίσκονται σε αναμονή */
-            cnt_signal = 2;                                                 // Εφόσον, δεν υπάρχουν "threads" σε αναμονή, απλά αλλάζει η τιμή αναγνωριστικού με την αντίστοιχη του 2ου "thread" (2) (έναυσμα για επόμενη εκτύπωση αυτή της συμβολοσειράς "Wonderful ").
+        else                                                                /* No threads are in wait */
+            cnt_signal = 2;                                                 // Since no threads are in wait, simply change the ID value to the one corresponding to the 2nd thread (2) (trigger for the next output, the string "Wonderful ").
 /***********************************************************************************************************************************************************************************************/
-        if (pthread_mutex_unlock (&mut) < 0)                                /* Κλήση της συνάρτησης "pthread_mutex_unlock ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για το ξεκλείδωμα του "mutex" (γραμμές 93-114) που δημιουργήθηκε για την προστασία των κοινών πόρων στο κρίσιμο τμήμα από ταυτόχρονη χρήση τους από δύο ή περισσότερα "threads" και έλεγχος για επιστροφή τιμής σφάλματος. */
+        if (pthread_mutex_unlock (&mut) < 0)                                /* Call to the "pthread_mutex_unlock ()" function from the "POSIX Threads" library (lines 10-11), to unlock the "mutex" (lines 93-114) which was created to protect shared resources in the critical section from simultaneous use by two or more threads, and check for an error return value. */
         {
-            perror ("pthread_mutex_unlock () failed to execute");           // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_mutex_unlock ()".
-            exit (1);                                                       // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+            perror ("pthread_mutex_unlock () failed to execute");           // Prints an error message to "stderr" for the failure of "pthread_mutex_unlock ()".
+            exit (1);                                                       // The process terminates with "exit value" 1.
         } 
     }
-    pthread_exit (NULL);                                                    // Το "thread" τερματίζει την λειτουργία του.
+    pthread_exit (NULL);                                                    // The thread terminates its operation.
 }
 /***********************************************************************************************************************************************************************************************/
 
-/************************************************************************** Κρίσιμο τμήμα του "pthread2" ***************************************************************************************/
+/************************************************************************** Critical section of "pthread2" ***************************************************************************************/
 void *thread2 (void *parameter)
 {
-    while (1)                                                               /* Ατέρμων βρόχος */
+    while (1)                                                               /* Infinite loop */
     {
-        if (pthread_mutex_lock (&mut) < 0)                                  /* Κλήση της συνάρτησης "pthread_mutex_lock ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για το κλείδωμα του "mutex" (γραμμές 137-158) που δημιουργήθηκε για την προστασία των κοινών πόρων στο κρίσιμο τμήμα του "pthread2" από ταυτόχρονη χρήση τους από δύο ή περισσότερα "threads" και έλεγχος για επιστροφή τιμής σφάλματος. */
+        if (pthread_mutex_lock (&mut) < 0)                                  /* Call to the "pthread_mutex_lock ()" function from the "POSIX Threads" library (lines 10-11), to lock the "mutex" (lines 137-158) which was created to protect shared resources in the critical section of "pthread2" from simultaneous access by two or more threads, and check for an error return value. */
         {
-            perror ("pthread_mutex_lock () failed to execute");             // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_mutex_destroy ()".
-            exit (1);                                                       // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+            perror ("pthread_mutex_lock () failed to execute");             // Prints an error message to "stderr" for the failure of "pthread_mutex_destroy ()".
+            exit (1);                                                       // The process terminates with "exit value" 1.
         }
 /************************************************************************** Mutex ***************************************************************************************************************/
-        while (cnt_signal != 2)                                             /* Βρόχος για έλεγχο και συγκεκριμένα το αν η "cnt_signal" περιέχει την τιμή αναγνωριστικού που αντιστοιχεί στο 2ο "thread" (2), προκειμένου το "pthread2" να συνεχίσει την εκτέλεση του κρίσιμου τμήματος του (cnt_signal == 2) ή όχι (cnt_signal != 2). */
+        while (cnt_signal != 2)                                             /* Loop to check whether "cnt_signal" contains the ID value corresponding to the 2nd thread (2), allowing "pthread2" to continue executing its critical section (cnt_signal == 2), or not (cnt_signal != 2). */
         {
-            cnt_wait++;                                                     // Αύξηση της καθολικής-κοινής μεταβλητής "cnt_wait" κατά 1, δηλώνοντας ότι θα υπάρχει τουλάχιστον ένα "thread" που θα βρίσκεται σε αναμονή από χρήση ενός "condition variable".
-            if (pthread_cond_wait (&cond_var, &mut) < 0)                    /* Κλήση της συνάρτησης "pthread_cond_wait ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), βάζοντας σε αναμονή το "pthread2" και ελευθερώνοντας παράλληλα το "mutex" για χρήση από κάποιο άλλο "thread". Ο βρόχος θα επαναλαμβάνεται για όσο η "cnt_signal" δεν περιέχει την τιμή αναγνωριστικού που αντιστοιχεί στο 2ο "thread" (2). Συνεπώς, το "thread" θα εγκλωβιστεί στον βρόχο με συνεχόμενες αναμονές και απώλειες ελέγχου του "mutex", μέχρι η "cnt_signal" "δώσει το σήμα" (αλλαγής της τιμής του από το κρίσιμο τμήμα του "pthread1" (γραμμές 84-123)) για "απεγκλωβισμό" του "thread" από τον βρόχο, δηλαδή, περιέχοντας την τιμή αναγνωριστικού που αντιστοιχεί στο 2ο "thread" (2). Επίσης, γίνεται και ο έλεγχος για επιστροφή τιμής σφάλματος από την "pthread_cond_wait ()". */
+            cnt_wait++;                                                     // Increment the global-shared variable "cnt_wait" by 1, indicating that at least one thread is waiting, using a "condition variable".
+            if (pthread_cond_wait (&cond_var, &mut) < 0)                    /* Call to the "pthread_cond_wait ()" function from the "POSIX Threads" library (lines 10-11), putting "pthread2" in wait and simultaneously releasing the "mutex" for use by another thread. The loop will continue while "cnt_signal" does not contain the ID value corresponding to the 2nd thread (2). Thus, the thread will be trapped in the loop with continuous waits and loss of control over the "mutex" until "cnt_signal" "gives the signal" (change of its value from the critical section of "pthread1" (lines 84-123)) to "release" the thread from the loop, i.e., containing the ID value corresponding to the 2nd thread (2). The return value of "pthread_cond_wait ()" is also checked for errors. */
             {
-                perror ("pthread_cond_wait () failed to execute");         // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_cond_wait ()".
-                exit (1);                                                  // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+                perror ("pthread_cond_wait () failed to execute");         // Prints an error message to "stderr" for the failure of "pthread_cond_wait ()".
+                exit (1);                                                  // The process terminates with "exit value" 1.
             }       
         }
-        printf ("Wonderful ");                                             // Τυπώνεται στο κανάλι "stdout" το μήνυμα "Wonderful ".
-        if (cnt_wait > 0)                                                  /* Έλεγχος για το αν βρίσκεται ήδη σε αναμονή ένα ή περισσότερα "threads" */
+        printf ("Wonderful ");                                             // Prints "Wonderful " to "stdout".
+        if (cnt_wait > 0)                                                  /* Check if one or more threads are already waiting */
         {
-            cnt_signal = 3;                                                // Αλλαγή της τιμής αναγνωριστικού με την αντίστοιχη του 3ου "thread" (3) (έναυσμα για επόμενη εκτύπωση αυτή της συμβολοσειράς "World! ").
-            if (pthread_cond_broadcast (&cond_var) < 0)                    /* Κλήση της συνάρτησης "pthread_cond_broadcast ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), και αφύπνιση όλων των "threads" που περιμένουν ειδοποίηση, όπου η βεβαιότητα ότι υπάρχουν "threads" σε αναμονή καθορίζεται από τον έλεγχο της γραμμής 147. Επίσης, γίνεται και ο έλεγχος για επιστροφή τιμής σφάλματος από την "pthread_cond_broadcast ()". */
+            cnt_signal = 3;                                                // Change the ID value to the one corresponding to the 3rd thread (3) (trigger for the next output, the string "World! ").
+            if (pthread_cond_broadcast (&cond_var) < 0)                    /* Call to the "pthread_cond_broadcast ()" function from the "POSIX Threads" library (lines 10-11), waking all threads waiting for a signal, ensured by the check in line 147. The return value of "pthread_cond_broadcast ()" is also checked for errors. */
             {
-                perror ("pthread_cond_broadcast () failed to execute");    // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_cond_broadcast ()".
-                exit (1);                                                  // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+                perror ("pthread_cond_broadcast () failed to execute");    // Prints an error message to "stderr" for the failure of "pthread_cond_broadcast ()".
+                exit (1);                                                  // The process terminates with "exit value" 1.
             }
-            cnt_wait = 0;                                                  // Μηδενισμός του πλήθους των "threads" που βρίσκονται σε αναμονή, διότι προηγήθηκε η κλήση της "pthread_cond_broadcast ()" στη γραμμή 150.
+            cnt_wait = 0;                                                  // Reset the count of threads in wait, since the call to "pthread_cond_broadcast ()" in line 150 has already occurred.
         }
-        else                                                               /* Δεν υπάρχουν "threads" που βρίσκονται σε αναμονή */
-            cnt_signal = 3;                                                // Εφόσον, δεν υπάρχουν "threads" σε αναμονή, απλά αλλάζει η τιμή αναγνωριστικού με την αντίστοιχη του 3ου "thread" (3) (έναυσμα για επόμενη εκτύπωση αυτή της συμβολοσειράς "World! ").
+        else                                                               /* No threads are in wait */
+            cnt_signal = 3;                                                // Since no threads are in wait, simply change the ID value to the one corresponding to the 3rd thread (3) (trigger for the next output, the string "World! ").
 /***********************************************************************************************************************************************************************************************/        
-        if (pthread_mutex_unlock (&mut) < 0)                               /* Κλήση της συνάρτησης "pthread_mutex_unlock ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για το ξεκλείδωμα του "mutex" (γραμμές 137-158) που δημιουργήθηκε για την προστασία των κοινών πόρων στο κρίσιμο τμήμα από ταυτόχρονη χρήση τους από δύο ή περισσότερα "threads" και έλεγχος για επιστροφή τιμής σφάλματος. */
+        if (pthread_mutex_unlock (&mut) < 0)                               /* Call to the "pthread_mutex_unlock ()" function from the "POSIX Threads" library (lines 10-11), to unlock the "mutex" (lines 137-158) which was created to protect shared resources in the critical section from simultaneous use by two or more threads, and check for an error return value. */
         {
-            perror ("pthread_mutex_unlock () failed to execute");          // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_mutex_unlock ()".
-            exit (1);                                                      // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+            perror ("pthread_mutex_unlock () failed to execute");          // Prints an error message to "stderr" for the failure of "pthread_mutex_unlock ()".
+            exit (1);                                                      // The process terminates with "exit value" 1.
         }
     }
-    pthread_exit (NULL);                                                   // Το "thread" τερματίζει την λειτουργία του.
+    pthread_exit (NULL);                                                   // The thread terminates its operation.
 }
 /***********************************************************************************************************************************************************************************************/
 
-/************************************************************************* Κρίσιμο τμήμα του "pthread3" ****************************************************************************************/
+/************************************************************************* Critical section of "pthread3" ****************************************************************************************/
 void *thread3 (void *parameter)
 {
-    while (1)                                                              /* Ατέρμων βρόχος */
+    while (1)                                                              /* Infinite loop */
     {
-        if (pthread_mutex_lock (&mut) < 0)                                 /* Κλήση της συνάρτησης "pthread_mutex_lock ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για το κλείδωμα του "mutex" (γραμμές 181-202) που δημιουργήθηκε για την προστασία των κοινών πόρων στο κρίσιμο τμήμα του "pthread3" από ταυτόχρονη χρήση τους από δύο ή περισσότερα "threads" και έλεγχος για επιστροφή τιμής σφάλματος. */
+        if (pthread_mutex_lock (&mut) < 0)                                 /* Call to the "pthread_mutex_lock ()" function from the "POSIX Threads" library (lines 10-11), to lock the "mutex" (lines 181-202) which was created to protect shared resources in the critical section of "pthread3" from simultaneous access by two or more threads, and check for an error return value. */
         {
-            perror ("pthread_mutex_lock () failed to execute");            // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_mutex_lock ()".
-            exit (1);                                                      // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+            perror ("pthread_mutex_lock () failed to execute");            // Prints an error message to "stderr" for the failure of "pthread_mutex_lock ()".
+            exit (1);                                                      // The process terminates with "exit value" 1.
         }
 /******************************************************************************* Mutex *********************************************************************************************************/
-        while (cnt_signal != 3)                                            /* Βρόχος για έλεγχο και συγκεκριμένα το αν η "cnt_signal" περιέχει την τιμή αναγνωριστικού που αντιστοιχεί στο 3ο "thread" (3), προκειμένου το "pthread3" να συνεχίσει την εκτέλεση του κρίσιμου τμήματος του (cnt_signal == 3) ή όχι (cnt_signal != 3). */
+        while (cnt_signal != 3)                                            /* Loop to check whether "cnt_signal" contains the ID value corresponding to the 3rd thread (3), allowing "pthread3" to continue executing its critical section (cnt_signal == 3), or not (cnt_signal != 3). */
         {
-            cnt_wait++;                                                    // Αύξηση της καθολικής-κοινής μεταβλητής "cnt_wait" κατά 1, δηλώνοντας ότι θα υπάρχει τουλάχιστον ένα "thread" που θα βρίσκεται σε αναμονή από χρήση ενός "condition variable".
-            if (pthread_cond_wait (&cond_var, &mut) < 0)                   /* Κλήση της συνάρτησης "pthread_cond_wait ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), βάζοντας σε αναμονή το "pthread3" και ελευθερώνοντας παράλληλα το "mutex" για χρήση από κάποιο άλλο "thread". Ο βρόχος θα επαναλαμβάνεται για όσο η "cnt_signal" δεν περιέχει την τιμή αναγνωριστικού που αντιστοιχεί στο 3ο "thread" (3). Συνεπώς, το "thread" θα εγκλωβιστεί στον βρόχο με συνεχόμενες αναμονές και απώλειες ελέγχου του "mutex", μέχρι η "cnt_signal" "δώσει το σήμα" (αλλαγής της τιμής του από το κρίσιμο τμήμα του "pthread2" (γραμμές 128-167)) για "απεγκλωβισμό" του "thread" από τον βρόχο, δηλαδή, περιέχοντας την τιμή αναγνωριστικού που αντιστοιχεί στο 3ο "thread" (3). Επίσης, γίνεται και ο έλεγχος για επιστροφή τιμής σφάλματος από την "pthread_cond_wait ()". */
+            cnt_wait++;                                                    // Increment the global-shared variable "cnt_wait" by 1, indicating that at least one thread is waiting, using a "condition variable".
+            if (pthread_cond_wait (&cond_var, &mut) < 0)                   /* Call to the "pthread_cond_wait ()" function from the "POSIX Threads" library (lines 10-11), putting "pthread3" in wait and simultaneously releasing the "mutex" for use by another thread. The loop will continue while "cnt_signal" does not contain the ID value corresponding to the 3rd thread (3). Thus, the thread will be trapped in the loop with continuous waits and loss of control over the "mutex" until "cnt_signal" "gives the signal" (change of its value from the critical section of "pthread2" (lines 128-167)) to "release" the thread from the loop, i.e., containing the ID value corresponding to the 3rd thread (3). The return value of "pthread_cond_wait ()" is also checked for errors. */
             {
-                perror ("pthread_cond_wait () failed to execute");         // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_cond_wait ()".
-                exit (1);                                                  // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+                perror ("pthread_cond_wait () failed to execute");         // Prints an error message to "stderr" for the failure of "pthread_cond_wait ()".
+                exit (1);                                                  // The process terminates with "exit value" 1.
             }
         }
-        printf ("World! ");                                                // Τυπώνεται στο κανάλι "stdout" το μήνυμα "World! ".
-        if (cnt_wait > 0)                                                  /* Έλεγχος για το αν βρίσκεται ήδη σε αναμονή ένα ή περισσότερα "threads" */
+        printf ("World! ");                                                // Prints "World! " to "stdout".
+        if (cnt_wait > 0)                                                  /* Check if one or more threads are already waiting */
         {
-            cnt_signal = 1;                                                // Αλλαγή της τιμής αναγνωριστικού με την αντίστοιχη του 1ου "thread" (1) (έναυσμα για επόμενη εκτύπωση αυτή της συμβολοσειράς "What A ").
-            if (pthread_cond_broadcast (&cond_var) < 0)                    /* Κλήση της συνάρτησης "pthread_cond_broadcast ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), και αφύπνιση όλων των "threads" που περιμένουν ειδοποίηση, όπου η βεβαιότητα ότι υπάρχουν "threads" σε αναμονή καθορίζεται από τον έλεγχο της γραμμής 191. Επίσης, γίνεται και ο έλεγχος για επιστροφή τιμής σφάλματος από την "pthread_cond_broadcast ()". */
+            cnt_signal = 1;                                                // Change the ID value to the one corresponding to the 1st thread (1) (trigger for the next output, the string "What A ").
+            if (pthread_cond_broadcast (&cond_var) < 0)                    /* Call to the "pthread_cond_broadcast ()" function from the "POSIX Threads" library (lines 10-11), waking all threads waiting for a signal, ensured by the check in line 191. The return value of "pthread_cond_broadcast ()" is also checked for errors. */
             {
-                perror ("pthread_cond_broadcast () failed to execute");    // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_cond_broadcast ()".
-                exit (1);                                                  // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+                perror ("pthread_cond_broadcast () failed to execute");    // Prints an error message to "stderr" for the failure of "pthread_cond_broadcast ()".
+                exit (1);                                                  // The process terminates with "exit value" 1.
             }
-            cnt_wait = 0;                                                  // Μηδενισμός του πλήθους των "threads" που βρίσκονται σε αναμονή, διότι προηγήθηκε η κλήση της "pthread_cond_broadcast ()" στη γραμμή 194.
+            cnt_wait = 0;                                                  // Reset the count of threads in wait, since the call to "pthread_cond_broadcast ()" in line 194 has already occurred.
         }
-        else                                                               /* Δεν υπάρχουν "threads" που βρίσκονται σε αναμονή */
-            cnt_signal = 1;                                                // Εφόσον, δεν υπάρχουν "threads" σε αναμονή, απλά αλλάζει η τιμή αναγνωριστικού με την αντίστοιχη του 1ου "thread" (1) (έναυσμα για επόμενη εκτύπωση αυτή της συμβολοσειράς "What A ").
+        else                                                               /* No threads are in wait */
+            cnt_signal = 1;                                                // Since no threads are in wait, simply change the ID value to the one corresponding to the 1st thread (1) (trigger for the next output, the string "What A ").
 /***********************************************************************************************************************************************************************************************/
-        if (pthread_mutex_unlock (&mut) < 0)                               /* Κλήση της συνάρτησης "pthread_mutex_unlock ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11), για το ξεκλείδωμα του "mutex" (γραμμές 181-202) που δημιουργήθηκε για την προστασία των κοινών πόρων στο κρίσιμο τμήμα από ταυτόχρονη χρήση τους από δύο ή περισσότερα "threads" και έλεγχος για επιστροφή τιμής σφάλματος. */
+        if (pthread_mutex_unlock (&mut) < 0)                               /* Call to the "pthread_mutex_unlock ()" function from the "POSIX Threads" library (lines 10-11), to unlock the "mutex" (lines 181-202) which was created to protect shared resources in the critical section from simultaneous use by two or more threads, and check for an error return value. */
         {
-            perror ("pthread_mutex_unlock () failed to execute");          // Τυπώνεται στο κανάλι "stderr" ένα μήνυμα λάθους για την αποτυχημένη εκτέλεση της "pthread_mutex_unlock ()".
-            exit (1);                                                      // Η διεργασία τερματίζεται με "exit value" την τιμή 1.
+            perror ("pthread_mutex_unlock () failed to execute");          // Prints an error message to "stderr" for the failure of "pthread_mutex_unlock ()".
+            exit (1);                                                      // The process terminates with "exit value" 1.
         }
     }
-    pthread_exit (NULL);                                                   // Το "thread" τερματίζει την λειτουργία του.
+    pthread_exit (NULL);                                                   // The thread terminates its operation.
 }
+
 /***********************************************************************************************************************************************************************************************/
 
-/*  ΕΝΔΕΙΚΤΙΚΑ ΤΡΕΞΙΜΑΤΑ
+/*  SAMPLE RUNS
     
-    #1 ./LS2-19390005-Δ4-Β-2-2-condition_vars
-    What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World!...
+    #1 ./condition_vars
+    What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World!
+    What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World!
+    What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! 
+    What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World!
+    What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World!
+    What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World!
+    What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World!
+    What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World!
+    What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World!
+    What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World!
+    What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World! What A Wonderful World!...
     
-    ΣΧΟΛΙΑ
+    COMMENTS
     
-    Με τους ατέρμονες βρόχους στα κρίσιμα τμήματα των τριών "threads", αφήνουν κομμάτια του κώδικα ανεκτέλεστα από την στιγμή που οι βρόχοι δεν θα τερματιστούν από την ίδια την διεργασία, παρά μόνο από την παρέμβαση του χρήστη τερματίζοντας από μόνος του το πρόγραμμα. Συγκεκριμένα, τα "threads" δεν θα τερματιστούν ποτέ (η "pthread_exit ()" που εισάγεται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11) βρίσκεται έξω από τους βρόχους των τριών κρίσιμων τμημάτων των τριών "threads" στις γραμμές 122, 166, 210 αντίστοιχα), οπότε δεν θα συχρονιστούν κιόλας για την αποδέσμευση τους από τη μνήμη με την κλήση της "pthread_join ()" (εισάγεται, επίσης, από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11)) στις γραμμές 52, 57, 62. Επίσης, δεν θα αποδεσμευτούν από τη μνήμη και οι μεταβλητές τύπου "pthread_mutex_t" και "pthread_cond_t", δηλαδή, το "mutex" και η "condition variable" που εισάγονται από τις βιβλιοθήκες των "POSIX Threads" (γραμμές 10-11). Συνεπώς, η διεργασία θα εκτελείται για πάντα και ο τερματισμός της θα γίνεται μόνο με την "αναγκαία" παρέμβαση του χρήστη.
+    Due to the infinite loops in the critical sections of the three threads, parts of the code remain unexecuted because the loops will not terminate on their own
+    but will only stop if the user manually terminates the program. Specifically, the threads will never terminate (the "pthread_exit()" function, imported from the
+    "POSIX Threads" libraries (lines 10-11), is located outside the loops of the three critical sections of the three threads on lines 122, 166, and 210 respectively),
+    and as a result, they will not be synchronized for their memory deallocation using the "pthread_join()" function (also imported from the "POSIX Threads" libraries 
+    (lines 10-11)) on lines 52, 57, and 62. Furthermore, the "pthread_mutex_t" and "pthread_cond_t" variables, i.e., the "mutex" and the "condition variable" imported 
+    from the "POSIX Threads" libraries (lines 10-11), will not be freed from memory. Consequently, the process will run indefinitely, and termination will only occur 
+    with necessary user intervention.
 */
+
